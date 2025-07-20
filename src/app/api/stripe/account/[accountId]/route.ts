@@ -3,10 +3,10 @@ import { getConnectAccount, getAccountBalance } from '@/lib/stripe';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { accountId: string } }
+  { params }: { params: Promise<{ accountId: string }> }
 ) {
+  const { accountId } = await params;
   try {
-    const { accountId } = params;
 
     if (!accountId) {
       return NextResponse.json({ error: 'Account ID is required' }, { status: 400 });
