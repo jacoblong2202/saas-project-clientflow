@@ -1,7 +1,8 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
-import { Settings, CheckCircle, User } from "lucide-react";
+import { Settings, CheckCircle, User, CreditCard, ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const barData = [
   { name: "1 AUG", value: 20000 },
@@ -79,6 +80,120 @@ const chartColors = ["#4F46E5", "#22D3EE", "#FBBF24", "#10B981", "#EF4444"];
 
 export default function DashboardPage() {
   const [dateRange, setDateRange] = useState("This month");
+  const [stripeAccount, setStripeAccount] = useState<any>(null);
+  const [stripeBalance, setStripeBalance] = useState<any>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Check if user has connected Stripe account
+  useEffect(() => {
+    checkStripeConnection();
+  }, []);
+
+  const checkStripeConnection = async () => {
+    try {
+      // Check if user has a stored Stripe account ID
+      const accountId = localStorage.getItem('stripeAccountId');
+      if (accountId) {
+        const response = await fetch(`/api/stripe/account/${accountId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setStripeAccount(data.account);
+          setStripeBalance(data.balance);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking Stripe connection:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const connectStripe = async () => {
+    setIsConnecting(true);
+    try {
+      const response = await fetch('/api/stripe/connect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'user@example.com', // Replace with actual user email
+          country: 'US'
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Store the account ID
+        localStorage.setItem('stripeAccountId', data.accountId);
+        // Redirect to Stripe onboarding
+        window.location.href = data.accountLink;
+      } else {
+        console.error('Failed to create Stripe account');
+      }
+    } catch (error) {
+      console.error('Error connecting Stripe:', error);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const openStripeDashboard = () => {
+    if (stripeAccount?.id) {
+      // Open Stripe Express Dashboard
+      window.open(`https://dashboard.stripe.com/express/${stripeAccount.id}`, '_blank');
+    }
+  };
+
+  // Update stat cards with real Stripe data
+  const getRealTimeStats = () => {
+    if (!stripeBalance) return statCards;
+
+    const available = stripeBalance.available?.[0]?.amount || 0;
+    const pending = stripeBalance.pending?.[0]?.amount || 0;
+    const total = available + pending;
+
+    return [
+      {
+        title: "Available Balance",
+        value: `$${(available / 100).toFixed(2)}`,
+        change: "+0%",
+        changeColor: "green",
+        bgColor: "bg-[#4F46E5]",
+        textColor: "text-white",
+        subtext: "Ready for payout",
+      },
+      {
+        title: "Pending Balance",
+        value: `$${(pending / 100).toFixed(2)}`,
+        change: "+0%",
+        changeColor: "green",
+        bgColor: "bg-white",
+        textColor: "text-black",
+        subtext: "Processing payments",
+      },
+      {
+        title: "Total Revenue",
+        value: `$${(total / 100).toFixed(2)}`,
+        change: "+0%",
+        changeColor: "green",
+        bgColor: "bg-white",
+        textColor: "text-black",
+        subtext: "All time",
+      },
+      {
+        title: "Account Status",
+        value: stripeAccount?.charges_enabled ? "Active" : "Pending",
+        change: stripeAccount?.charges_enabled ? "✓" : "⏳",
+        changeColor: stripeAccount?.charges_enabled ? "green" : "yellow",
+        bgColor: "bg-white",
+        textColor: "text-black",
+        subtext: stripeAccount?.charges_enabled ? "Ready to accept payments" : "Complete onboarding",
+      },
+    ];
+  };
+
   return (
     <div className="min-h-screen bg-[#f9fafe] p-6">
       <div className="max-w-7xl mx-auto">
@@ -90,9 +205,9 @@ export default function DashboardPage() {
                 <span className="text-2xl font-bold">Hello, Barbara! 👋</span>
                 <Settings className="w-5 h-5 text-gray-400" />
               </div>
-              <div className="text-gray-500 text-base">This is what’s happening in your store this month.</div>
+              <div className="text-gray-500 text-base">This is what's happening in your store this month.</div>
             </div>
-            <div className="mt-4 md:mt-0">
+            <div className="mt-4 md:mt-0 flex gap-3">
               <select
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none shadow-sm"
                 value={dateRange}
@@ -101,11 +216,32 @@ export default function DashboardPage() {
                 <option>This month</option>
                 <option>Last month</option>
               </select>
+              
+              {/* Stripe Connect Button */}
+              {!stripeAccount ? (
+                <Button 
+                  onClick={connectStripe} 
+                  disabled={isConnecting}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  {isConnecting ? 'Connecting...' : 'Connect Stripe'}
+                </Button>
+              ) : (
+                <Button 
+                  onClick={openStripeDashboard}
+                  variant="outline"
+                  className="border-green-600 text-green-600 hover:bg-green-50"
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  View Stripe Dashboard
+                </Button>
+              )}
             </div>
           </div>
 
           {/* Stat Cards */}
-          {statCards.map((card, i) => (
+          {getRealTimeStats().map((card, i) => (
             <div
               key={card.title}
               className={`rounded-2xl shadow-sm p-6 flex flex-col gap-2 ${card.bgColor} ${card.textColor}`}
@@ -113,7 +249,7 @@ export default function DashboardPage() {
               <div className="text-base font-semibold mb-1">{card.title}</div>
               <div className="text-3xl font-extrabold mb-1">{card.value}</div>
               <div className="flex items-center gap-2 mb-1">
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${card.changeColor === "green" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{card.change}</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${card.changeColor === "green" ? "bg-green-100 text-green-700" : card.changeColor === "yellow" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>{card.change}</span>
                 <span className="text-xs text-gray-200 md:text-gray-400">{card.subtext}</span>
               </div>
             </div>
